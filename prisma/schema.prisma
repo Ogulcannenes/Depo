@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id      Int      @id @default(autoincrement())
+  name    String
+  stock   Int
+
+  history StockHistory[]
+}
+
+model StockHistory {
+  id         Int      @id @default(autoincrement())
+  oldStock   Int
+  newStock   Int
+  changedAt  DateTime @default(now())
+
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id])
+}
+
+model User {
+  id        Int    @id @default(autoincrement())
+  username  String @unique
+  password  String
+  role      String @default("user")
+}

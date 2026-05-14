@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Realtime Stock System</title>
+
+    <style>
+      body {
+        font-family: Arial;
+        padding: 30px;
+      }
+
+      h1 {
+        margin-bottom: 20px;
+      }
+
+      .product {
+        border: 1px solid #ccc;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Canlı Stok Sistemi</h1>
+
+    <div id="products"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+      const productsDiv = document.getElementById("products");
+
+      const socket = io();
+
+      const loadProducts = async () => {
+        const response = await fetch("/products");
+
+        const products = await response.json();
+
+        renderProducts(products);
+      };
+
+      const renderProducts = (products) => {
+        productsDiv.innerHTML = "";
+
+        products.forEach((product) => {
+          productsDiv.innerHTML += `
+                    <div class="product">
+                        <h3>${product.name}</h3>
+                        <p>Stock: <span id="stock-${product.id}">
+                            ${product.stock}
+                        </span></p>
+                    </div>
+                `;
+        });
+      };
+
+      socket.on("stockUpdated", (data) => {
+        console.log("Realtime update:", data);
+
+        const stockElement = document.getElementById(`stock-${data.productId}`);
+
+        if (stockElement) {
+          stockElement.innerText = data.newStock;
+        }
+      });
+
+      loadProducts();
+    </script>
+  </body>
+</html>
