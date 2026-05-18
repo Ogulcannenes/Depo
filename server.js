@@ -1,5 +1,9 @@
 const express = require("express");
 
+const swaggerUi = require("swagger-ui-express");
+
+const swaggerSpec = require("./src/swagger");
+
 const http = require("http");
 
 const { Server } = require("socket.io");
@@ -14,23 +18,43 @@ const authRoutes = require("./src/routes/authRoutes");
 
 require("./src/database/database");
 
+const cors = require("cors");
+
 const app = express();
+
+app.use(cors());
 
 const server = http.createServer(app);
 
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:5173",
+
+    methods: ["GET", "POST"],
+  },
+});
+
+const errorMiddleware = require("./src/middlewares/errorMiddleware");
 
 setIO(io);
 
-app.use(express.json());
+app.use(
+  "/uploads",
+
+  express.static("uploads"),
+);
 
 app.use(express.static("public"));
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/auth", authRoutes);
 
 app.use("/products", productsRoutes);
 
 app.use("/history", historyRoutes);
+
+app.use(errorMiddleware);
 
 io.on("connection", (socket) => {
   console.log("Bir kullanıcı bağlandı");

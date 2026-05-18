@@ -1,20 +1,55 @@
 const { updateProductStock } = require("../services/productsService");
 const prisma = require("../lib/prisma");
+const { getIO } = require("../socket/socket");
 
 const getProducts = async (req, res) => {
   const search = req.query.search || "";
 
-  try {
-    const products = await prisma.product.findMany({
-      where: {
-        name: {
-          contains: search,
-        },
-      },
-    });
+  const page = Number(req.query.page) || 1;
 
-    res.send(products);
+  const limit = Number(req.query.limit) || 6;
+
+  const skip = (page - 1) * limit;
+
+  const products = await prisma.product.findMany({
+    where: {
+      name: {
+        contains: search,
+      },
+    },
+
+    skip,
+
+    take: limit,
+  });
+
+  res.send(products);
+};
+
+const getStats = async (req, res) => {
+  try {
+    const totalProducts = await prisma.product.count();
+
+    const products = await prisma.product.findMany();
+
+    const totalStock = products.reduce(
+      (sum, product) => sum + product.stock,
+      0,
+    );
+
+    const lowStock = products.filter((product) => product.stock < 10).length;
+
+    const totalHistory = await prisma.stockHistory.count();
+
+    res.send({
+      totalProducts,
+      totalStock,
+      lowStock,
+      totalHistory,
+    });
   } catch (error) {
+    console.log(error);
+
     res.status(500).send({
       message: "Database hatası",
     });
@@ -24,29 +59,32 @@ const getProducts = async (req, res) => {
 const createProduct = async (req, res) => {
   const { name, stock } = req.body;
 
-  try {
-    const product = await prisma.product.create({
-      data: {
-        name,
-        stock,
-      },
-    });
+  const stockNumber = Number(stock);
 
-    res.send({
-      message: "Ürün eklendi",
-      productId: product.id,
-    });
-  } catch (error) {
-    res.status(500).send({
-      message: "Database hatası",
-    });
-  }
+  const image = req.file ? `/uploads/${req.file.filename}` : null;
+
+  const product = await prisma.product.create({
+    data: {
+      name,
+      stock: stockNumber,
+      image,
+    },
+  });
+
+  getIO().emit("productUpdated");
+
+  res.send({
+    message: "Ürün eklendi",
+    productId: product.id,
+  });
 };
 
 const updateStock = async (req, res) => {
   const id = Number(req.params.id);
 
   const { stock } = req.body;
+
+  const image = req.file ? `/uploads/${req.file.filename}` : null;
 
   try {
     const existingProduct = await prisma.product.findUnique({
@@ -61,34 +99,40 @@ const updateStock = async (req, res) => {
       });
     }
 
-    if (existingProduct.stock === stock) {
-      return res.status(400).send({
-        message: "Stock zaten aynı",
+    const updateData = {
+      ...(stock && {
+        stock: Number(stock),
+      }),
+
+      ...(image && {
+        image,
+      }),
+    };
+
+    await prisma.product.update({
+      where: {
+        id,
+      },
+
+      data: updateData,
+    });
+
+    if (stock) {
+      await prisma.stockHistory.create({
+        data: {
+          productId: id,
+
+          oldStock: existingProduct.stock,
+
+          newStock: Number(stock),
+        },
       });
     }
 
-    await prisma.$transaction([
-      prisma.product.update({
-        where: {
-          id,
-        },
-
-        data: {
-          stock,
-        },
-      }),
-
-      prisma.stockHistory.create({
-        data: {
-          productId: id,
-          oldStock: existingProduct.stock,
-          newStock: stock,
-        },
-      }),
-    ]);
+    getIO().emit("productUpdated");
 
     res.send({
-      message: "Stok güncellendi",
+      message: "Ürün güncellendi",
     });
   } catch (error) {
     console.log(error);
@@ -99,8 +143,42 @@ const updateStock = async (req, res) => {
   }
 };
 
+const deleteProduct = async (req, res) => {
+  const id = Number(req.params.id);
+
+  try {
+    await prisma.stockHistory.deleteMany({
+      where: {
+        productId: id,
+      },
+    });
+
+    await prisma.product.delete({
+      where: {
+        id,
+      },
+    });
+
+    getIO().emit("productUpdated");
+
+    res.send({
+      message: "Ürün silindi",
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: "Database hatası",
+    });
+  }
+};
+
 module.exports = {
   getProducts,
+
   createProduct,
+
   updateStock,
+
+  getStats,
+
+  deleteProduct,
 };

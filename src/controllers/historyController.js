@@ -1,7 +1,6 @@
 const prisma = require("../lib/prisma");
 
 const getProductHistory = async (req, res) => {
-  const productId = Number(req.params.productId);
   const page = Number(req.query.page) || 1;
 
   const limit = Number(req.query.limit) || 5;
@@ -10,10 +9,6 @@ const getProductHistory = async (req, res) => {
 
   try {
     const history = await prisma.stockHistory.findMany({
-      where: {
-        productId,
-      },
-
       include: {
         product: true,
       },
